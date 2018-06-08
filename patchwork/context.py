@@ -113,6 +113,11 @@ class Context(object):
             context = context.parent
         return False
 
+    def is_blocking(self, db: Datastore) -> bool:
+        """Return whether anyone is waiting for an answer from this context."""
+        return db.has_promisees(
+                    db.dereference(self.workspace_link).answer_promise)
+
 
     def __str__(self) -> str:
         return self.display

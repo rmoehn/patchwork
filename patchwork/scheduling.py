@@ -178,16 +178,20 @@ class Scheduler(object):
             self.memoizer.forget(starting_context)
             raise
 
-    def choose_arbitrary_context(self) -> Optional[Context]:
-        if len(self.pending_contexts) > 0:
-            choice = self.pending_contexts.popleft()
-            self.active_contexts.add(choice)
-            return choice
-        return None
+    def choose_context_lazily(self) -> Optional[Context]:
+        if not self.pending_contexts:
+            return None
+
+        choice = next((c for c in self.pending_contexts
+                       if c.is_blocking(self.db)),
+                      self.pending_contexts[0])
+        self.pending_contexts.remove(choice)  # Slowness probably doesn't matter
+        self.active_contexts.add(choice)
+        return choice
 
     def choose_context_to_advance_promise(self, promise: Address) -> Optional[Context]:
         # TODO: Hm. How can we do this?
-        return self.choose_arbitrary_context()
+        return self.choose_context_lazily()
 
     def relinquish_context(self, context: Context) -> None:
         self.pending_contexts.append(context)
@@ -228,7 +232,7 @@ class RootQuestionSession(Session):
 
     def _choose_next_context(self):
         resulting_context = self.sched.choose_context_to_advance_promise(self.final_answer_promise) or \
-                            self.sched.choose_arbitrary_context()
+                            self.sched.choose_context_lazily()
 
         if resulting_context is None:
             raise ValueError("Ended up with no work to do but also no answers")
