@@ -51,3 +51,41 @@ class TestBasic(unittest.TestCase):
             result = sess.act(Reply("1761669"))
             self.assertTrue(sess.is_fulfilled())
             self.assertIn("1761669", result)
+
+
+    # The following tests are incomplete in that they only make sure that no
+    # exceptions are thrown. Since the scheduler throws an exception when there
+    # are no blocking contexts left, this implicitly asserts that the scheduler
+    # doesn't overlook blocking contexts.
+
+    def testRootReplyWithPointers(self):
+        """Test whether root replies with pointers work."""
+        db      = Datastore()
+        sched   = Scheduler(db)
+
+        with RootQuestionSession(sched, "Root?") as sess:
+            sess.act(AskSubquestion("Sub1?"))
+            sess.act(AskSubquestion("Sub2?"))
+            sess.act(Reply("Root [$a1 $a2]."))
+
+
+    def testNonRootPromise(self):
+        """Test whether a non-root promise gets advanced."""
+        db      = Datastore()
+        sched   = Scheduler(db)
+
+        with RootQuestionSession(sched, "Root?") as sess:
+            sess.act(AskSubquestion("Sub1?"))
+            sess.act(AskSubquestion("Sub2 ($a1)?"))
+            sess.act(Reply("$a2"))
+            sess.act(Unlock("$3"))
+
+
+    def testUnlockWorkspace(self):
+        """Test unlocking of unfulfilled workspaces."""
+        db      = Datastore()
+        sched   = Scheduler(db)
+
+        with RootQuestionSession(sched, "Root?") as sess:
+            sess.act(AskSubquestion("Sub1?"))
+            sess.act(Unlock("$w1"))
