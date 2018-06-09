@@ -18,7 +18,3 @@ class Issue004Test(unittest.TestCase):
 
         with RootQuestionSession(sched, "what is the sum of list [[6] [[7] []]]") as sess:
             self.assertIsNotNone(sess.current_context)
-
-
-if __name__ == '__main__':
-    unittest.main()
