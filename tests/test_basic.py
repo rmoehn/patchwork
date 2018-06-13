@@ -51,3 +51,14 @@ class TestBasic(unittest.TestCase):
             result = sess.act(Reply("1761669"))
             self.assertTrue(sess.is_fulfilled())
             self.assertIn("1761669", result)
+
+
+    def testRootReplyWithPointers(self):
+        """Incomplete test whether root replies with pointers work."""
+        db      = Datastore()
+        sched   = Scheduler(db)
+
+        with RootQuestionSession(sched, "Root?") as sess:
+            sess.act(AskSubquestion("Sub1?"))
+            sess.act(AskSubquestion("Sub2?"))
+            sess.act(Reply("Root [$a1 $a2]."))

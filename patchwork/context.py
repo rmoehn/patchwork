@@ -118,6 +118,14 @@ class Context(object):
         return db.has_promisees(
                     db.dereference(self.workspace_link).answer_promise)
 
+    def can_fulfill_promise(self, db: Datastore, promise: Address) -> bool:
+        return promise == db.dereference(self.workspace_link).answer_promise
+
+    def can_advance_promise(self, db: Datastore, promise: Address) -> bool:
+        return self.can_fulfill_promise(db, promise) \
+               or (self.is_blocking(db)
+                   and self.parent.can_advance_promise(db, promise))
+
 
     def __str__(self) -> str:
         return self.display
