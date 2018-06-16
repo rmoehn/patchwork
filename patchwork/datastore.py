@@ -50,8 +50,8 @@ class Datastore(object):
     def register_promisee(self, address: Address, promisee: Any) -> None:
         self.promises[address].append(promisee)
 
-    def has_promisees(self, address: Address) -> bool:
-        return bool(self.promises[address])
+    def get_promisees(self, address: Address) -> List[Any]:
+        return self.promises[address]
 
     def resolve_promise(self, address: Address, content: Any) -> List[Any]:
         assert address in self.promises, "{} not in promises".format(address)
@@ -138,14 +138,14 @@ class TransactionAccumulator(Datastore):
     # Note: This doesn't look elegant, but it's better than ``return
     # self.promises.get(address) …``, which would silently ignore wrong
     # addresses.
-    def has_promisees(self, address: Address) -> bool:
+    def get_promisees(self, address: Address) -> List[Any]:
         if address in self.resolved_promises:
-            return False
+            return []
         elif address in self.db.promises:
-            return bool(self.db.promises[address] or
-                        self.additional_promisees.get(address))
+            return self.db.promises[address] + \
+                   self.additional_promisees.get(address, [])
         elif address in self.new_promises:
-            return bool(self.new_promises[address])
+            return self.new_promises[address]
         else:
             raise KeyError("Promise {} is not registered in the datastore."
                            .format(address))

@@ -113,19 +113,21 @@ class Context(object):
             context = context.parent
         return False
 
-    def is_blocking(self, db: Datastore) -> bool:
-        """Return whether anyone is waiting for an answer from this context."""
-        return db.has_promisees(
-                    db.dereference(self.workspace_link).answer_promise)
-
     def can_fulfill_promise(self, db: Datastore, promise: Address) -> bool:
-        return promise == db.dereference(self.workspace_link).answer_promise
+        workspace = db.dereference(self.workspace_link)
+        return promise in [workspace.answer_promise,
+                           workspace.final_workspace_promise]
 
     def can_advance_promise(self, db: Datastore, promise: Address) -> bool:
-        return self.can_fulfill_promise(db, promise) \
-               or (self.is_blocking(db)
-                   and self.parent.can_advance_promise(db, promise))
+        workspace = db.dereference(self.workspace_link)
+        promisee_contexts = \
+            [Context(args[0], db)
+             for args in db.get_promisees(workspace.answer_promise)
+                    + db.get_promisees(workspace.final_workspace_promise)]
 
+        return self.can_fulfill_promise(db, promise) or \
+               any(pc.can_advance_promise(db, promise)
+                   for pc in promisee_contexts)
 
     def __str__(self) -> str:
         return self.display
