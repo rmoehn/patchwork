@@ -121,9 +121,9 @@ class Context(object):
     def can_advance_promise(self, db: Datastore, promise: Address) -> bool:
         workspace = db.dereference(self.workspace_link)
         promisee_contexts = \
-            [Context(args[0], db)
+            (Context(args[0], db)
              for args in db.get_promisees(workspace.answer_promise)
-                    + db.get_promisees(workspace.final_workspace_promise)]
+                    + db.get_promisees(workspace.final_workspace_promise))
 
         return self.can_fulfill_promise(db, promise) or \
                any(pc.can_advance_promise(db, promise)
