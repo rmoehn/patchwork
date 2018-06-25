@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from textwrap import indent
-from typing import DefaultDict, Dict, Deque, Generator, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
 from .datastore import Address, Datastore
 from .hypertext import Workspace, visit_unlocked_region
