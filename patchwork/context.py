@@ -1,10 +1,10 @@
 from collections import defaultdict, deque
 from textwrap import indent
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 from .datastore import Address, Datastore
 from .hypertext import Workspace, visit_unlocked_region
-from .text_manipulation import make_link_texts
+from .text_manipulation import make_link_data
 
 class Context(object):
     def __init__(
@@ -78,31 +78,41 @@ class Context(object):
             ) -> Dict[str, Address]:
         return self._name_pointers(workspace_link, db)[1]
 
+
+    def to_data(self, db: Datastore) -> Dict[str, Any]:
+        link_data = make_link_data(self.workspace_link, db, self.unlocked_locations, self.pointer_names)
+        workspace: Workspace = db.dereference(self.workspace_link)
+
+        return {'predecessor':  link_data.get(workspace.predecessor_link),
+                'question':     link_data[workspace.question_link],
+                'scratchpad':   link_data[workspace.scratchpad_link],
+                'subquestions': [{'question':    link_data[q],
+                                  'answer':      link_data[a],
+                                  'workspace':   link_data[w]}
+                                 for q, a, w in workspace.subquestions]}
+
     def to_str(self, db: Datastore) -> str:
         CONTEXT_FMT = "{predecessor}Question: {question}\nScratchpad: {scratchpad}\nSubquestions:\n{subquestions}\n"
+        cdata = self.to_data(db)
 
-        link_texts = make_link_texts(self.workspace_link, db, self.unlocked_locations, self.pointer_names)
+        subquestions_str = "\n".join([
+            "{}.\n{}\n{}\n{}".format(i,
+                                     indent(str(sq['question']), "  "),
+                                     indent(str(sq['answer']), "  "),
+                                     indent(str(sq['workspace']), "  "))
+            for i, sq in enumerate(cdata['subquestions'], start=1)
+        ])
 
-        subquestion_builder = []
-        workspace: Workspace = db.dereference(self.workspace_link)
-        for i, subquestion in enumerate(workspace.subquestions, start=1):
-            q, a, w = subquestion
-            q_text = link_texts[q]
-            a_text = link_texts[a]
-            w_text = link_texts[w]
-            subquestion_builder.append("{}.\n{}\n{}\n{}".format(i, indent(q_text, "  "), indent(a_text, "  "), indent(w_text, "  ")))
-        subquestions = "\n".join(subquestion_builder)
-
-        if workspace.predecessor_link is None:
-            predecessor = ""
-        else:
-            predecessor = "Predecessor: {}\n".format(link_texts[workspace.predecessor_link])
+        predecessor_str = "Predecessor: {} \n".format(cdata['predecessor']) \
+                                if cdata['predecessor'] \
+                                else ""
 
         return CONTEXT_FMT.format(
-                predecessor=predecessor,
-                question=link_texts[workspace.question_link],
-                scratchpad=link_texts[workspace.scratchpad_link],
-                subquestions=subquestions)
+                predecessor=predecessor_str,
+                question=cdata['question'],
+                scratchpad=cdata['scratchpad'],
+                subquestions=subquestions_str)
+
 
     def is_own_ancestor(self, db: Datastore) -> bool:
         initial_workspace = db.canonicalize(self.workspace_link)

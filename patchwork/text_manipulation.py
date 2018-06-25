@@ -71,14 +71,57 @@ def create_raw_hypertext(
     return recursively_create_hypertext(parsed, db, pointer_link_map)
 
 
-def make_link_texts(
+# ## Data representation of link variants
+
+class Link(object):
+    # Credits: https://stackoverflow.com/a/2626364/5091738
+    def __repr__(self) -> str:
+        """Return a string representation of ``self``.
+
+        Example
+        -------
+        >>> repr(UnlockedLink("$a1", "shrubbery"))
+        "UnlockedLink(content='shrubbery', pointer='$a1')"
+        """
+        return "{}({})".format(
+                self.__class__.__name__,
+                ", ".join("{}={!r}".format(k, self.__dict__[k])
+                          for k in sorted(self.__dict__.keys())))
+
+
+class LockedLink(Link):
+    def __init__(self, pointer):
+        self.pointer = pointer
+
+    def __str__(self) -> str:
+        return self.pointer
+
+
+class AnonymousLink(Link):
+    def __init__(self, content):
+        self.content = content
+
+    def __str__(self) -> str:
+        return "[{}]".format(self.content)
+
+
+class UnlockedLink(Link):
+    def __init__(self, pointer, content):
+        self.pointer = pointer
+        self.content = content
+
+    def __str__(self) -> str:
+        return "[{}: {}]".format(self.pointer, self.content)
+
+
+# ## Extracting links from hypertext
+
+def make_link_data(
         root_link: Address,
         db: Datastore,
         unlocked_locations: Optional[Set[Address]]=None,
         pointer_names: Optional[Dict[Address, str]]=None,
-        ) -> Dict[Address, str]:
-    INLINE_FMT = "[{pointer_name}: {content}]"
-    ANONYMOUS_INLINE_FMT = "[{content}]"
+        ) -> Dict[Address, Link]:
     # We need to construct this string in topological order since pointers
     # are substrings of other unlocked pointers. Since everything is immutable
     # once created, we are guaranteed to have a DAG.
@@ -103,24 +146,32 @@ def make_link_texts(
                 if include_counts[outgoing_link] == 0:
                     no_incomings.append(outgoing_link)
 
-    link_texts: Dict[Address, str] = {}
+    link_texts: Dict[Address, Link] = {}
 
     if pointer_names is not None:
         for link in reversed(order):
             if link == root_link:
                 continue
             if unlocked_locations is not None and link not in unlocked_locations:
-                link_texts[link] = pointer_names[link]
+                link_texts[link] = LockedLink(pointer_names[link])
             else:
                 page = db.dereference(link)
-                link_texts[link] = INLINE_FMT.format(
-                        pointer_name=pointer_names[link],
-                        content=page.to_str(display_map=link_texts))
+                link_texts[link] = UnlockedLink(pointer_names[link],
+                                                page.to_str(display_map=link_texts))
     else:
         for link in reversed(order):
             page = db.dereference(link)
-            link_texts[link] = ANONYMOUS_INLINE_FMT.format(
-                    content=page.to_str(display_map=link_texts))
+            link_texts[link] = AnonymousLink(page.to_str(display_map=link_texts))
 
 
     return link_texts
+
+
+def make_link_texts(
+        root_link: Address,
+        db: Datastore,
+        unlocked_locations: Optional[Set[Address]]=None,
+        pointer_names: Optional[Dict[Address, str]]=None,
+        ) -> Dict[Address, str]:
+    links = make_link_data(root_link, db, unlocked_locations, pointer_names)
+    return {k: str(v) for k, v in links.items()}
