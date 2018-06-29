@@ -5,16 +5,19 @@ import hypothesis.strategies as st
 from hypothesis.searchstrategy import SearchStrategy
 from hypothesis.stateful import precondition, rule, RuleBasedStateMachine
 
-from patchwork.actions import Reply, Unlock
+from patchwork.actions import Reply, Unlock, AskSubquestion
 from patchwork.context import Context
 from patchwork.datastore import Datastore
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
+# MAYBE TODO: Make sure that issues #11 and #12 are tested. But maybe not,
+# because once they're fixed, they're fixed and the chance of messing them up
+# again is small.
 
 # [ starts an expanded pointer and $ starts a locked pointer. Currently there is
 # no way of escaping them.
-ht_text = st.text(min_size=0).filter(lambda s: '[' not in s and '$' not
-                                                   in s)
+# min_size 1, because otherwise AskSubquestion misbehaves.
+ht_text = st.text(min_size=1).filter(lambda s: '[' not in s and '$' not in s)
 
 # st.builds
 # st.recursive
@@ -35,11 +38,10 @@ ht_text = st.text(min_size=0).filter(lambda s: '[' not in s and '$' not
 # Expanded pointers consist of an opening bracket, hypertext and a closing
 # bracket.
 
-st.lists(st.one_of(ht_text, st.integers()))
-
 
 def ht_base(pointers):
-    return st.lists(ht_text | st.sampled_from(pointers)) \
+    return st.lists(ht_text | st.sampled_from(pointers),
+                    min_size=1) \
                 .map(lambda l: " ".join(l))
 
 
@@ -47,12 +49,15 @@ def expanded_pointer(ht):
     return ht.map(lambda ht_: "{}".format(ht_))
 
 
+# Concerning min_size see comment above ht_text.
 def hypertext(pointers):
     return st.recursive(ht_base(pointers),
                         lambda base: st.lists(base | expanded_pointer(
-                                base)).map(lambda l: " ".join(l)))
+                                base), min_size=1).map(lambda l: " ".join(l)))
 
 
+# TODO: Collect statistics on the available pointers. Is there an overhang in
+# any type of pointer that we should avoid by weighted sampling?
 def locked_unlocked_pointers(c: Context):
     ul = copy.copy(c.unlocked_locations)
     ul.discard(c.workspace_link)
@@ -74,6 +79,8 @@ class RandomExercise(RuleBasedStateMachine):
         self.sess   = RootQuestionSession(Scheduler(self.db),
                                           data.draw(hypertext([])))
 
+
+    # FIXME: Resetting the DB should be done properly and in start_session.
     @precondition(lambda self: self.sess)
     @rule(data=st.data(),
           is_reset_db=st.booleans())
@@ -96,6 +103,25 @@ class RandomExercise(RuleBasedStateMachine):
         lp, __ = locked_unlocked_pointers(self.sess.current_context)
         sample_pointer = data.draw(st.sampled_from(lp))
         self.sess.act(Unlock(sample_pointer))
+
+
+    @precondition(lambda self: self.sess)
+    @rule(data=st.data())
+    def ask(self, data: SearchStrategy[Any]):
+        context: Context = self.sess.current_context
+        pointers = context.name_pointers_for_workspace(context.workspace_link,
+                                                       self.db)
+
+        try:
+            self.sess.act(AskSubquestion(
+                                data.draw(hypertext(list(pointers.keys())))))
+        except ValueError as e:
+            # If it re-asked an ancestor's question...
+            # (For now we'll prevent this error only in this primitive way.)
+            if "Action resulted in an infinite loop" in str(e):
+                pass
+            else:
+                raise
 
 
 
