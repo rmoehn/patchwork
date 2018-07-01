@@ -14,6 +14,9 @@ from patchwork.scheduling import RootQuestionSession, Scheduler
 # because once they're fixed, they're fixed and the chance of messing them up
 # again is small.
 
+# Also issue #4. – When the root question returns immediately, make sure the
+# question was already in the DB.
+
 # [ starts an expanded pointer and $ starts a locked pointer. Currently there is
 # no way of escaping them.
 # min_size 1, because otherwise AskSubquestion misbehaves.
