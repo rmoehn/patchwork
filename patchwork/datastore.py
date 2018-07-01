@@ -7,7 +7,7 @@ from typing import Any, DefaultDict, Dict, List, Set
 
 class Address(object):
     def __init__(self) -> None:
-        self.location = uuid.uuid1()
+        self.location = uuid.uuid4()
 
     def __hash__(self) -> int:
         return hash(self.location)

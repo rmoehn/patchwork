@@ -20,7 +20,3 @@ class LazinessTest(unittest.TestCase):
             sess.act(AskSubquestion("Question 4?"))
             context = sess.act(Unlock("$a2"))
             self.assertIn("Question 2?", str(context))
-
-
-if __name__ == '__main__':
-    unittest.main()

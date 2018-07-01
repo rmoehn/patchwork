@@ -3,6 +3,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Set, Union
 
 import parsy
 
+from patchwork.hypertext import Workspace
 from .datastore import Address, Datastore
 from .hypertext import RawHypertext, visit_unlocked_region
 
@@ -156,12 +157,17 @@ def make_link_data(
                 link_texts[link] = LockedLink(pointer_names[link])
             else:
                 page = db.dereference(link)
+                content = page.to_data(display_map=link_texts) \
+                            if isinstance(page, Workspace) \
+                            else page.to_str(display_map=link_texts)
+
                 link_texts[link] = UnlockedLink(pointer_names[link],
-                                                page.to_str(display_map=link_texts))
+                                                content)
     else:
         for link in reversed(order):
             page = db.dereference(link)
-            link_texts[link] = AnonymousLink(page.to_str(display_map=link_texts))
+            link_texts[link] = AnonymousLink(page.to_data(
+                    display_map=link_texts))
 
 
     return link_texts

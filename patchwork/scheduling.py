@@ -224,6 +224,7 @@ class RootQuestionSession(Session):
     # sessions in a real app.
     def __init__(self, scheduler: Scheduler, question: str) -> None:
         super().__init__(scheduler)
+        self.current_context: Context
         resulting_context, self.final_answer_promise = scheduler.ask_root_question(question)
         if resulting_context is None and not self.is_fulfilled():
             self.current_context = self._choose_next_context()

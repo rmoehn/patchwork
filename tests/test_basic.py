@@ -175,7 +175,7 @@ class TestBasic(unittest.TestCase):
         # - Can put any hyptertext at any time.
 
         # Unlock.
-        # - Can pass any pointer that is unlocked in the current workspace.
+        # - Can pass any pointer that is locked in the current workspace.
 
     def testUnlockWorkspace(self):
         """Test unlocking of unfulfilled workspaces."""

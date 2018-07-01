@@ -67,7 +67,7 @@ class RawHypertext(Hypertext):
             elif display_map is None:
                 builder.append(str(chunk))
             else:
-                builder.append(display_map[chunk])
+                builder.append(str(display_map[chunk]))
         return ''.join(builder)
 
 
@@ -121,6 +121,7 @@ class Workspace(Hypertext):
                 indent(display_map[w], "  "),
                 ) for i, (q, a, w) in enumerate(self.subquestions, start=1))
         builder.append("Question:")
+        from .text_manipulation import UnlockedLink
         builder.append(indent(question, "  "))
         builder.append("Scratchpad:")
         builder.append(indent(scratchpad, "  "))
