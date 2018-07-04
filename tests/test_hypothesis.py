@@ -7,11 +7,14 @@ from hypothesis.stateful import precondition, rule, RuleBasedStateMachine
 from patchwork.actions import Reply, Unlock, AskSubquestion, Scratch
 from patchwork.context import Context
 from patchwork.datastore import Datastore
+from patchwork.hypertext import Workspace
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
-# MAYBE TODO: Make sure that issues #11 and #12 are tested. But maybe not,
+# MAYBE TODO: Make sure that issues #11, #12 and #15 are tested. But maybe not,
 # because once they're fixed, they're fixed and the chance of messing them up
 # again is small.
+# But an easy way of testing at least #15 is to assert in ask() that
+# patchwork throws an error when the question is "$1" (question pointer).
 
 # Also issue #4. – When the root question returns immediately, make sure the
 # question was already in the DB.
@@ -63,6 +66,12 @@ class RandomExercise(RuleBasedStateMachine):
         return list(names_pointers.keys())
 
 
+    def question_pointer(self):
+        context = self.sess.current_context
+        ws: Workspace = self.db.dereference(context.workspace_link)
+        return context.pointer_names[ws.question_link]
+
+
     @precondition(lambda self: not self.sess)
     @rule(data=st.data(),
           is_reset_db=st.booleans())
@@ -94,8 +103,11 @@ class RandomExercise(RuleBasedStateMachine):
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
+        qp = self.question_pointer()
+        question = data.draw(hypertext(self.pointers())
+                             .filter(lambda q: q != qp))
         try:
-            self.sess.act(AskSubquestion(data.draw(hypertext(self.pointers()))))
+            self.sess.act(AskSubquestion(question))
         except ValueError as e:
             # If it re-asked an ancestor's question...
             # (For now we'll prevent this error only in this primitive way.)
