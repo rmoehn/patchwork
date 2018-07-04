@@ -247,6 +247,7 @@ class RootQuestionSession(Session):
         return True
 
     def act(self, action: Action) -> Union[Context, str]:
+        #print(action, action.arg)
         if self.is_fulfilled(self.final_answer_promise): # Don't do any more work
             return make_link_texts(self.final_answer_promise, self.sched.db)[self.final_answer_promise]
 
