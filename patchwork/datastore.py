@@ -4,10 +4,14 @@ from collections import defaultdict
 
 from typing import Any, DefaultDict, Dict, List, Set
 
+from .abcid import Abcid
+
+# abcid = Abcid()
+# abcid.load_words()
 
 class Address(object):
     def __init__(self) -> None:
-        self.location = uuid.uuid1()
+        self.location = uuid.uuid4()  #abcid.abcid()
 
     def __hash__(self) -> int:
         return hash(self.location)
