@@ -33,7 +33,7 @@ def ht_base(pointers):
 
 
 def expanded_pointer(ht):
-    return ht.map(lambda ht_: "{}".format(ht_))
+    return ht.map(lambda ht_: "[{}]".format(ht_))
 
 
 # Concerning min_size see comment above ht_text.
@@ -47,7 +47,6 @@ def hypertext(pointers):
 # any type of pointer that we should avoid by weighted sampling?
 def locked_pointers(c: Context):
     ul = c.unlocked_locations.copy()
-    #ul.remove(c.workspace_link)
     lp = [p for p, a in c.name_pointers.items() if a not in ul]
     return lp
 
@@ -78,8 +77,8 @@ class RandomExercise(RuleBasedStateMachine):
     def start_session(self, data: SearchStrategy[Any], is_reset_db: bool):
         if self.db is None or is_reset_db:
             self.db = Datastore()
-        self.sess = RootQuestionSession(Scheduler(self.db),
-                                        data.draw(hypertext([])))
+        question = data.draw(hypertext([]).filter(lambda q: q[0] != "["))
+        self.sess = RootQuestionSession(Scheduler(self.db), question)
 
 
     @precondition(lambda self: self.sess)
@@ -105,7 +104,8 @@ class RandomExercise(RuleBasedStateMachine):
     def ask(self, data: SearchStrategy[Any]):
         qp = self.question_pointer()
         question = data.draw(hypertext(self.pointers())
-                             .filter(lambda q: q != qp))
+                             .filter(lambda q: q != qp)
+                             .filter(lambda q: q[0] != "["))  # Issue #15.
         try:
             self.sess.act(AskSubquestion(question))
         except ValueError as e:
