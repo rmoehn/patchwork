@@ -122,7 +122,11 @@ class Context(object):
     def is_own_ancestor(self, db: Datastore) -> bool:
         initial_workspace = db.canonicalize(self.workspace_link)
         context: Optional[Context] = self.parent
+        seen: Set[Context] = set()
         while context is not None:
+            if context in seen:
+                raise RuntimeError("Infinite loop!")
+            seen.add(context)
             if context == self and db.canonicalize(context.workspace_link) == initial_workspace:
                 return True
             context = context.parent

@@ -1,1 +1,2 @@
+hypothesis==3.66.0
 parsy==1.2.0
