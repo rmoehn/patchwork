@@ -124,8 +124,8 @@ class Context(object):
         context: Optional[Context] = self.parent
         seen: Set[Context] = set()
         while context is not None:
-            if context in seen:
-                raise RuntimeError("Infinite loop!")
+            # if context in seen:
+            #     raise RuntimeError("Infinite loop!")
             seen.add(context)
             if context == self and db.canonicalize(context.workspace_link) == initial_workspace:
                 return True

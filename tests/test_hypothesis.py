@@ -70,7 +70,7 @@ def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
         leaves,
         lambda subtree: st.lists(subtree | expanded_pointer(subtree),
                                  min_size=1).map(join)
-    )
+    )  #.map(lambda s: s.strip())
 
 
 def hypertext(pointers: List[str]) -> SearchStrategy[str]:
@@ -130,6 +130,7 @@ class RandomExercise(RuleBasedStateMachine):
         return c.pointer_names[ws.question_link]
 
 
+    # TODO:
     @precondition(lambda self: not self.sess)
     @rule(data=st.data(),
           is_reset_db=st.booleans())
@@ -139,11 +140,9 @@ class RandomExercise(RuleBasedStateMachine):
         self.sess = RootQuestionSession(
                         Scheduler(self.db),
                         question=data.draw(question_hypertext([])))
-        if self.sess.final_answer_promise:
+        if self.sess.root_answer:
             print("Now!")
             self.sess = None
-        else:
-            print("Not now.")
 
 
     @precondition(lambda self: self.sess)
@@ -151,7 +150,7 @@ class RandomExercise(RuleBasedStateMachine):
     def reply(self, data: SearchStrategy[Any]):
         self.sess.act(
             Reply(data.draw(hypertext(self.pointers()))))
-        if self.sess.final_answer_promise:
+        if self.sess.root_answer:
             self.sess = None
 
 
@@ -170,6 +169,7 @@ class RandomExercise(RuleBasedStateMachine):
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
         qp = self.question_pointer()
+        print(qp)
         question = data.draw(question_hypertext(self.pointers())
                          .filter(lambda q: q != qp))  # Issue #15.
         try:
