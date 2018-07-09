@@ -229,7 +229,7 @@ class RootQuestionSession(Session):
                 self.current_context \
                 or self.sched.choose_context(promise_to_advance)
 
-    def choose_promise(self, root: Address) -> Address:
+    def choose_promise(self, root: Address) -> Optional[Address]:
         """Return unfulfilled promise from hypertext tree with root ``root``.
 
         Parameters
@@ -268,9 +268,11 @@ class RootQuestionSession(Session):
         if not self.sched.db.is_fulfilled(root):
             return root
 
-        return next((self.choose_promise(child)
-                     for child in self.sched.db.dereference(root).links()),
-                    None)
+        for child in self.sched.db.dereference(root).links():
+            promise = self.choose_promise(child)
+            if promise:
+                return promise
+        return None
 
     def format_root_answer(self) -> str:
         """Format the root answer with all its pointers unlocked."""
