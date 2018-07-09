@@ -11,15 +11,6 @@ from patchwork.datastore import Datastore
 from patchwork.hypertext import Workspace
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
-# MAYBE TODO: Make sure that issues #11, #12 and #15 are tested. But maybe not,
-# because once they're fixed, they're fixed and the chance of messing them up
-# again is small.
-# But an easy way of testing at least #15 is to assert in ask() that
-# patchwork throws an error when the question is "$1" (question pointer).
-
-# Also issue #4. – When the root question returns immediately, make sure the
-# question was already in the DB.
-
 
 # Strategies ###############################################
 
@@ -70,7 +61,7 @@ def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
         leaves,
         lambda subtree: st.lists(subtree | expanded_pointer(subtree),
                                  min_size=1).map(join)
-    )  #.map(lambda s: s.strip())
+    )
 
 
 def hypertext(pointers: List[str]) -> SearchStrategy[str]:
@@ -130,7 +121,10 @@ class RandomExercise(RuleBasedStateMachine):
         return c.pointer_names[ws.question_link]
 
 
-    # TODO:
+    # TODO generation: Make sure that sometimes a question that was asked
+    # before is asked again, also in ask(), so that the memoizer is exercised.
+    # TODO assertion: The root answer is available immediately iff it was in
+    # the datastore already.
     @precondition(lambda self: not self.sess)
     @rule(data=st.data(),
           is_reset_db=st.booleans())
@@ -141,7 +135,6 @@ class RandomExercise(RuleBasedStateMachine):
                         Scheduler(self.db),
                         question=data.draw(question_hypertext([])))
         if self.sess.root_answer:
-            print("Now!")
             self.sess = None
 
 
@@ -169,11 +162,11 @@ class RandomExercise(RuleBasedStateMachine):
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
         qp = self.question_pointer()
-        print(qp)
         question = data.draw(question_hypertext(self.pointers())
                          .filter(lambda q: q != qp))  # Issue #15.
         try:
-            self.sess.act(AskSubquestion(question))
+            self.sess.act(
+                AskSubquestion(question))
         except ValueError as e:
             # If it re-asked an ancestor's question...
             # (For now we'll prevent this error only in this primitive way.)
@@ -186,7 +179,8 @@ class RandomExercise(RuleBasedStateMachine):
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def scratch(self, data: SearchStrategy[Any]):
-        self.sess.act(Scratch(data.draw(hypertext(self.pointers()))))
+        self.sess.act(
+            Scratch(data.draw(hypertext(self.pointers()))))
 
 
 TestHypothesis = RandomExercise.TestCase
