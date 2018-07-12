@@ -70,6 +70,9 @@ class RawHypertext(Hypertext):
                 builder.append(display_map[chunk])
         return ''.join(builder)
 
+    def __bool__(self) -> bool:
+        return bool(self.chunks)
+
 
 class Workspace(Hypertext):
     def __init__(
