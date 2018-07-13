@@ -3,10 +3,10 @@
 I wrote this in order to debug an endless loop that occurred intermittently.
 """
 
+import collections
 import multiprocessing
 import time
 import unittest
-
 
 from tests import test_hypothesis
 
@@ -14,9 +14,9 @@ def run_test(i_run):
     result = unittest.TestResult()
     test_hypothesis.TestHypothesis().run(result)
     print(result)
-    return i_run
+    return i_run, result.wasSuccessful()
 
-# Actually I don't want abort at timeout, but let it running, so that I can
+# Actually I don't want to abort at timeout, but leave it running, so that I can
 # attach with pyflame.
 
 def print_status(status):
@@ -38,9 +38,9 @@ def main():
 
         while True:
             for i, r in enumerate(results):
-                if r.ready() and status[i] != "✔":
-                    print(r.get())
-                    status[i] = "✔"
+                if r.ready() and status[i] == " ":
+                    __, was_successful = r.get()
+                    status[i] = "✔" if was_successful else "✘"
             print_status(status)
             time.sleep(3)
 
