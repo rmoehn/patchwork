@@ -8,11 +8,11 @@ import multiprocessing
 import time
 import unittest
 
-from tests import test_hypothesis
+from tests import test_randomly
 
 def run_test(i_run):
     result = unittest.TestResult()
-    test_hypothesis.TestHypothesis().run(result)
+    test_randomly.TestRandomly().run(result)
     print(result)
     return i_run, result.wasSuccessful()
 
