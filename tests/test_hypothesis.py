@@ -1,20 +1,15 @@
 import re
-from typing import Any, Optional, List, Set, Collection
+from typing import Any, Collection, List, Optional
 
 import hypothesis.strategies as st
 from hypothesis.searchstrategy import SearchStrategy
-from hypothesis.stateful import precondition, rule, RuleBasedStateMachine
+from hypothesis.stateful import RuleBasedStateMachine, precondition, rule
 
-from patchwork.actions import Reply, Unlock, AskSubquestion, Scratch
+from patchwork.actions import AskSubquestion, Reply, Scratch, Unlock
 from patchwork.context import Context
-from patchwork.datastore import Datastore, Address
+from patchwork.datastore import Address, Datastore
 from patchwork.hypertext import Workspace
 from patchwork.scheduling import RootQuestionSession, Scheduler
-
-# We should allow a simple scratch link for AskSubquestion.
-# But not if the scratch is empty.
-# Also, asking with only a pointer to another sub-question of the same
-# context doesn't make sense.
 
 # Strategies ###############################################
 
@@ -119,8 +114,7 @@ class RandomExercise(RuleBasedStateMachine):
 
 
     def unaskable_pointers(self) -> Collection[str]:
-        """Return pointers that by themselves can't be asked as a subquestion.
-        """
+        """Return pointers that by themselves can't be asked as a subquestion."""
         c = self.sess.current_context
         ws: Workspace = self.db.dereference(c.workspace_link)
 
@@ -128,6 +122,7 @@ class RandomExercise(RuleBasedStateMachine):
         if not self.db.dereference(ws.scratchpad_link):
             unaskable_addrs.append(ws.scratchpad_link)
         unaskable_addrs += [sq[0] for sq in ws.subquestions]  # sq[0]: question
+
         return {c.pointer_names[a] for a in unaskable_addrs}
 
 
@@ -148,14 +143,15 @@ class RandomExercise(RuleBasedStateMachine):
             self.sess = None
 
 
+    # TODO: After issue #12 is resolved, remove the workaround. It is too
+    # restrictive.
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def reply(self, data: SearchStrategy[Any]):
-        def not_question(p: str) -> bool:
-            return not re.match(r"\$q\d+\Z", p)
-
+        reply = data.draw(hypertext(self.pointers()).filter(
+                    lambda r: not re.match(r"\$q\d+\Z", r)))  # Issue #12, comment #2.
         self.sess.act(
-            Reply(data.draw(hypertext(self.pointers()).filter(not_question))))
+            Reply(reply))
         if self.sess.root_answer:
             self.sess = None
 
@@ -171,7 +167,7 @@ class RandomExercise(RuleBasedStateMachine):
 
     # TODO assertion: We should only get that value error when re-asking an
     # ancestor's question.
-    # TODO assertion: Asking an unaskable causes an exception.
+    # TODO assertion: Asking an unaskable pointer causes an exception.
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
