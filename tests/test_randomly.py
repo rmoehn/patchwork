@@ -1,3 +1,8 @@
+"""Property-based test for Patchwork.
+
+Main class: :py:class:`PatchworkStateMachine`
+"""
+
 import re
 from typing import Any, Collection, List, Optional
 
@@ -11,18 +16,17 @@ from patchwork.datastore import Address, Datastore
 from patchwork.hypertext import Workspace
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
+
 # Strategies ###############################################
 
-# A strategy for generating hypertext without any pointers. So it's not
-# really hypertext, but just text.
+# A strategy for generating hypertext without any pointers, ie. just text.
 #
 # Notes:
 # - [ and ] are for expanded pointers and $ starts a locked pointer. Currently
-#   there is no way of escaping them, so avoid them.
+#   there is no way of escaping them, so filter them out.
 # - min_size=1, because AskSubquestion misbehaves with empty questions. See also
 #   issue #11.
-ht_text: SearchStrategy[str] \
-    = st.text(min_size=1).filter(lambda s: re.search(r"[\[\]$]", s) is None)
+ht_text = st.text(min_size=1).filter(lambda t: re.search(r"[\[\]$]", t) is None)
 
 
 def expanded_pointer(hypertext_: SearchStrategy[str]) -> SearchStrategy[str]:
@@ -39,16 +43,20 @@ def join(l: List[str]) -> str:
 
 
 # Concerning min_size see the comment above ht_text.
-def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
-    """Return a strategy for generating nested non-empty hypertext.
+def hypertext(pointers: List[str]) -> SearchStrategy[str]:
+    """Return a strategy for generating nested hypertext.
 
-    The resulting strategy can generate any non-empty hypertext. Ie. a mix of
+    The resulting strategy can generate any hypertext. Ie. a mix of
     text, unexpanded pointers, and expanded pointers containing hypertext.
+    The resulting string won't have whitespace at either end in order to be
+    consistent with command-line Patchwork, which strips inputs before passing
+    them to the Actions.
 
     Parameters
     ----------
     pointers
-        Pointers that the strategy may put in the resulting hypertext.
+        Unexpanded pointers that the strategy may put in the resulting
+        hypertext.
 
     Returns
     -------
@@ -60,17 +68,17 @@ def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
         leaves,
         lambda subtree: st.lists(subtree | expanded_pointer(subtree),
                                  min_size=1).map(join)
-    ).map(lambda s: s.strip()).filter(lambda s: s)
+    ).map(lambda s: s.strip())
 
 
-def hypertext(pointers: List[str]) -> SearchStrategy[str]:
-    """Return a strategy for generating possibly empty hypertext.
+def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
+    """Return a strategy for generating non-empty hypertext.
 
     See also
     --------
-    :py:func:`nonempty_hypertext`
+    :py:func:`hypertext`
     """
-    return st.just("") | nonempty_hypertext(pointers)
+    return hypertext(pointers).filter(lambda s: s)
 
 
 def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
@@ -94,14 +102,14 @@ def locked_pointers(c: Context) -> List[str]:
             if address not in c.unlocked_locations]
 
 
-class RandomExercise(RuleBasedStateMachine):
+class PatchworkStateMachine(RuleBasedStateMachine):
     """Bombard patchwork with random questions, replies etc.
 
     This doesn't contain any assertions, yet, but at least it makes sure that no
     action will cause an exception or infinite loop.
     """
     def __init__(self):
-        super(RandomExercise, self).__init__()
+        super(PatchworkStateMachine, self).__init__()
         self.db: Optional[Datastore] = None
         self.sess: Optional[RootQuestionSession] = None
 
@@ -168,6 +176,8 @@ class RandomExercise(RuleBasedStateMachine):
     # TODO assertion: We should only get that value error when re-asking an
     # ancestor's question.
     # TODO assertion: Asking an unaskable pointer causes an exception.
+    # TODO generation: Address
+    # https://github.com/oughtinc/patchwork/issues/15#issuecomment-404728700.
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
@@ -193,4 +203,4 @@ class RandomExercise(RuleBasedStateMachine):
             Scratch(data.draw(hypertext(self.pointers()))))
 
 
-TestHypothesis = RandomExercise.TestCase
+TestRandomly = PatchworkStateMachine.TestCase
