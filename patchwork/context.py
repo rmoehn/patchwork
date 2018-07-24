@@ -155,4 +155,6 @@ class Context(object):
             return False
         return str(other) == str(self)
 
-
+    def __repr__(self) -> str:
+        return "Context(workspace_link={!r}, parent={!r})".format(
+                    self.workspace_link, self.parent)
