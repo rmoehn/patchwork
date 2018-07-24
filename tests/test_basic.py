@@ -1,12 +1,48 @@
 import unittest
 
-from patchwork.actions import AskSubquestion, Reply, Unlock
+from patchwork.actions import AskSubquestion, Reply, Unlock, Scratch
 from patchwork.datastore import Datastore
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
 
 class TestBasic(unittest.TestCase):
     """Integration tests for basic scenarios."""
+
+
+    def testPointerGlitch(self):
+        db = Datastore()
+        sched = Scheduler(db)
+
+        with RootQuestionSession(sched, "Head?") as sess:
+            sess.act(Scratch("Head?"))
+
+
+
+    # def testScratchInfinite(self):
+    #     db = Datastore()
+    #     sched = Scheduler(db)
+    #
+    #     with RootQuestionSession(sched, "0") as sess:
+    #         sess.act(AskSubquestion("/"))
+    #         sess.act(AskSubquestion("$a1"))
+    #         sess.act(AskSubquestion("$a2"))
+    #         sess.act(Reply("$q3"))
+    #         sess.act(Scratch(""))
+
+    # def testDupeQuestionNoPointer(self):
+    #     db = Datastore()
+    #     sched = Scheduler(db)
+    #
+    #     with RootQuestionSession(sched, "0") as sess:
+    #         sess.act(AskSubquestion("0"))
+
+    # def testDupeQuestion(self):
+    #     db = Datastore()
+    #     sched = Scheduler(db)
+    #
+    #     with RootQuestionSession(sched, "0[1]") as sess:
+    #         sess.act(AskSubquestion("0$1"))
+
 
     # Note: This test is tightly coupled with the implementation. If one of your
     # changes makes the test fail, it might not be because your change is wrong,
