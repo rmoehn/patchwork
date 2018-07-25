@@ -295,6 +295,7 @@ class RootQuestionSession(Session):
         return self.root_answer
 
     def act(self, action: Action) -> Union[Context, str]:
+        print(action.arg)
         resulting_context = self.sched.resolve_action(self.current_context,
                                                       action)
 

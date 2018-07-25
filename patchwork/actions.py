@@ -6,6 +6,9 @@ from .hypertext import Workspace
 from .text_manipulation import create_raw_hypertext, insert_raw_hypertext
 
 class Action(object):
+    def __init__(self, arg):
+        self.arg = arg
+
     def execute(
             self,
             db: Datastore,
@@ -28,6 +31,7 @@ class UnpredictableAction(Action):
 
 class Scratch(PredictableAction):
     def __init__(self, scratch_text: str) -> None:
+        super().__init__(scratch_text)
         self.scratch_text = scratch_text
 
     def execute(
@@ -72,6 +76,7 @@ class Scratch(PredictableAction):
 
 class AskSubquestion(PredictableAction):
     def __init__(self, question_text: str) -> None:
+        super().__init__(question_text)
         self.question_text = question_text
 
     def execute(
@@ -130,6 +135,7 @@ class AskSubquestion(PredictableAction):
 
 class Reply(UnpredictableAction):
     def __init__(self, reply_text: str) -> None:
+        super().__init__(reply_text)
         self.reply_text = reply_text
 
     def execute(
@@ -168,6 +174,7 @@ class Reply(UnpredictableAction):
 
 class Unlock(Action):
     def __init__(self, unlock_text: str) -> None:
+        super().__init__(unlock_text)
         self.unlock_text = unlock_text
 
     def execute(
