@@ -2,15 +2,18 @@
 
 Main class: :py:class:`PatchworkStateMachine`
 """
-
+import os
 import re
+import time
 from typing import Any, Collection, List, Optional
+import unittest
 
 import hypothesis.strategies as st
+import multiprocessing
 from hypothesis.searchstrategy import SearchStrategy
 from hypothesis.stateful import RuleBasedStateMachine, precondition, rule
 
-from patchwork.actions import AskSubquestion, Reply, Scratch, Unlock
+from patchwork.actions import AskSubquestion, Reply, Scratch, Unlock, Action
 from patchwork.context import Context
 from patchwork.datastore import Address, Datastore
 from patchwork.hypertext import Workspace
@@ -26,6 +29,8 @@ from patchwork.scheduling import RootQuestionSession, Scheduler
 #   there is no way of escaping them, so filter them out.
 # - min_size=1, because AskSubquestion misbehaves with empty questions. See also
 #   issue #11.
+from tests import killable_thread
+
 ht_text = st.text(min_size=1).filter(lambda t: re.search(r"[\[\]$]", t) is None)
 
 
@@ -112,6 +117,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         super(PatchworkStateMachine, self).__init__()
         self.db: Optional[Datastore] = None
         self.sess: Optional[RootQuestionSession] = None
+        self.pool = multiprocessing.Pool(processes=1)
 
 
     def pointers(self) -> List[str]:
@@ -134,6 +140,24 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         return {c.pointer_names[a] for a in unaskable_addrs}
 
 
+    def act(self, action: Action):
+        t = killable_thread.ThreadWithExc(target=lambda: self.sess.act(action),
+                                          daemon=False)
+        t.start()
+        t.join(1)
+        if t.is_alive():
+            print("Have to kill at {}.".format(time.time()))
+            try:
+                t.raiseExc(RuntimeError)
+            except Exception as e:
+                print("Exception with the async kill: {}".format(e))
+                os._exit(1)
+        if t.is_alive():
+            print("Couldn't kill at {}.".format(time.time()))
+            os._exit(1)
+
+
+    # TODO: We should have a Session.__exit__ somewhere.
     # TODO generation: Make sure that sometimes a question that was asked
     # before is asked again, also in ask(), so that the memoizer is exercised.
     # TODO assertion: The root answer is available immediately iff it was in
@@ -158,7 +182,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     def reply(self, data: SearchStrategy[Any]):
         reply = data.draw(hypertext(self.pointers()).filter(
                     lambda r: not re.match(r"\$q\d+\Z", r)))  # Issue #12, comment #2.
-        self.sess.act(
+        self.act(
             Reply(reply))
         if self.sess.root_answer:
             self.sess = None
@@ -169,7 +193,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @rule(data=st.data())
     def unlock(self, data: SearchStrategy[Any]):
         lps = locked_pointers(self.sess.current_context)
-        self.sess.act(
+        self.act(
             Unlock(data.draw(st.sampled_from(lps))))
 
 
@@ -185,7 +209,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         question = data.draw(question_hypertext(self.pointers())
                          .filter(lambda q: q not in up))  # Issue #15.
         try:
-            self.sess.act(
+            self.act(
                 AskSubquestion(question))
         except ValueError as e:
             # If it re-asked an ancestor's question...
@@ -199,8 +223,39 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def scratch(self, data: SearchStrategy[Any]):
-        self.sess.act(
+        self.act(
             Scratch(data.draw(hypertext(self.pointers()))))
 
 
+# Runner ###################################################
+
 TestRandomly = PatchworkStateMachine.TestCase
+# def run_state_machine():
+#     result = unittest.TestResult()
+#     t1 = time.time()
+#     PatchworkStateMachine.TestCase().run(result)
+#     t2 = time.time()
+#     print(result)
+#     return result, t2 - t1
+#
+#
+# class TestRandomly(unittest.TestCase):
+#     def testRunStateMachine(self):
+#         with multiprocessing.Pool() as pool:
+#             n_runs = max(4, os.cpu_count())  # Feel free to adapt this for your purposes.
+#             results = [pool.apply_async(run_state_machine) for i in range(n_runs)]
+#
+#             # What do I want?
+#             # - I think the probability is high that at least one of four
+#             #   runs finishes.
+#             # - So we have the running time of at least one process as a
+#             #   yardstick for the other processes.
+#             # - If nothing has happened for four times the normal running
+#             #   time, terminate the process pool.
+#
+#             # - Hmm, but I want the tests not to take forever, right? The
+#             #   problem is that Hypothesis tests' run times vary, because
+#             #   sometimes they hit a failure and shrink.
+#             # - That's why it would be better to put a time limit on act().
+#             #   I guess I should just try how much of a performance penalty
+#             #   running only act() asynchronously incurs.

@@ -31,10 +31,8 @@ def main():
     print(run_test(0))
     with multiprocessing.Pool(processes=4) as pool:
         n_trials    = 40
-        results     = set()
         status      = [" " for __ in range(n_trials)]
         results     = [pool.apply_async(run_test, [i]) for i in range(n_trials)]
-        times       = [0 for i in range(n_trials)]
 
         while True:
             for i, r in enumerate(results):
