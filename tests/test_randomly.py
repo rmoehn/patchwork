@@ -2,6 +2,8 @@
 
 Main class: :py:class:`PatchworkStateMachine`
 """
+
+import logging
 import os
 import re
 import time
@@ -10,6 +12,8 @@ import unittest
 
 import hypothesis.strategies as st
 import multiprocessing
+
+import sys
 from hypothesis.searchstrategy import SearchStrategy
 from hypothesis.stateful import RuleBasedStateMachine, precondition, rule
 
@@ -140,21 +144,25 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         return {c.pointer_names[a] for a in unaskable_addrs}
 
 
+    # TODO: Make the waiting time for the join adaptive.
     def act(self, action: Action):
         t = killable_thread.ThreadWithExc(target=lambda: self.sess.act(action),
+                                          name="Killable Session.act",
                                           daemon=False)
         t.start()
-        t.join(1)
+        waiting_time = 0.5
+        t.join(waiting_time)
+
         if t.is_alive():
-            print("Have to kill at {}.".format(time.time()))
+            logging.warning("Terminating the execution of action %s, because it"
+                            " might be caught in an infinite loop (execution"
+                            " time > %s s).", action, waiting_time)
             try:
-                t.raiseExc(RuntimeError)
-            except Exception as e:
-                print("Exception with the async kill: {}".format(e))
-                os._exit(1)
-        if t.is_alive():
-            print("Couldn't kill at {}.".format(time.time()))
-            os._exit(1)
+                t.terminate()
+            except killable_thread.UnkillableThread:
+                sys.exit("Couldn't kill the thread that is executing action {}."
+                         " Aborting in order to avoid system overload."
+                         .format(action))
 
 
     # TODO: We should have a Session.__exit__ somewhere.
@@ -214,9 +222,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         except ValueError as e:
             # If it re-asked an ancestor's question...
             # (For now we'll prevent this error only in this primitive way.)
-            if "Action resulted in an infinite loop" in str(e):
-                pass
-            else:
+            if "Action resulted in an infinite loop" not in str(e):
                 raise
 
 
