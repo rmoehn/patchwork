@@ -1,17 +1,15 @@
 """Property-based test for Patchwork.
 
 Main class: :py:class:`PatchworkStateMachine`
+
+Also defines :py:class:`TestRandomly`, which unit testing tools can detect.
 """
 
 import logging
-import os
 import re
-import time
 from typing import Any, Collection, List, Optional
-import unittest
 
 import hypothesis.strategies as st
-import multiprocessing
 
 import sys
 from hypothesis.searchstrategy import SearchStrategy
@@ -23,18 +21,20 @@ from patchwork.datastore import Address, Datastore
 from patchwork.hypertext import Workspace
 from patchwork.scheduling import RootQuestionSession, Scheduler
 
+from tests import killable_thread
+
 
 # Strategies ###############################################
+
+# MÖPMÖP: Revisit this:
 
 # A strategy for generating hypertext without any pointers, ie. just text.
 #
 # Notes:
 # - [ and ] are for expanded pointers and $ starts a locked pointer. Currently
 #   there is no way of escaping them, so filter them out.
-# - min_size=1, because AskSubquestion misbehaves with empty questions. See also
-#   issue #11.
-from tests import killable_thread
-
+# - min_size=1, because if we allow empty arguments to actions, infinite
+#   loops become more likely, which slows down test execution.
 ht_text = st.text(min_size=1).filter(lambda t: re.search(r"[\[\]$]", t) is None)
 
 
@@ -51,7 +51,6 @@ def join(l: List[str]) -> str:
     return "".join(l)
 
 
-# Concerning min_size see the comment above ht_text.
 def hypertext(pointers: List[str]) -> SearchStrategy[str]:
     """Return a strategy for generating nested hypertext.
 
@@ -59,7 +58,7 @@ def hypertext(pointers: List[str]) -> SearchStrategy[str]:
     text, unexpanded pointers, and expanded pointers containing hypertext.
     The resulting string won't have whitespace at either end in order to be
     consistent with command-line Patchwork, which strips inputs before passing
-    them to the Actions.
+    them to the :py:class:`Action` initializers.
 
     Parameters
     ----------
@@ -72,7 +71,9 @@ def hypertext(pointers: List[str]) -> SearchStrategy[str]:
     A strategy that generates hypertext.
     """
     protected_pointers = st.sampled_from(pointers).map(lambda p: p + " ")
+    # Protected from being garbled by following text: $1␣non-pointer text
     leaves = st.lists(ht_text | protected_pointers, min_size=1).map(join)
+    # Concerning min_size see the comment above ht_text.
     return st.recursive(
         leaves,
         lambda subtree: st.lists(subtree | expanded_pointer(subtree),
@@ -93,9 +94,10 @@ def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
 def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
     """Return a strategy for generating hypertext that is suited for questions.
 
-    Some hypertexts are not suited for questions. See issues #11 and #15. This
-    procedure returns the same strategy as :py:func:`nonempty_hypertext`, except
-    that it filters out those unsuitable cases.
+    Some hypertexts are likely to create infinite loops when used as a
+    subquestion. See issues #11 and #15. This procedure returns the same
+    strategy as :py:func:`nonempty_hypertext`, except that it filters out those
+    unsuitable cases.
 
     See also
     --------
@@ -106,42 +108,47 @@ def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
 
 # Test case ################################################
 
-def locked_pointers(c: Context) -> List[str]:
-    return [pointer for pointer, address in c.name_pointers.items()
-            if address not in c.unlocked_locations]
-
-
 class PatchworkStateMachine(RuleBasedStateMachine):
     """Bombard patchwork with random questions, replies etc.
 
     This doesn't contain any assertions, yet, but at least it makes sure that no
-    action will cause an exception or infinite loop.
+    action will cause an unexpected exception.
     """
     def __init__(self):
         super(PatchworkStateMachine, self).__init__()
         self.db: Optional[Datastore] = None
         self.sess: Optional[RootQuestionSession] = None
-        self.pool = multiprocessing.Pool(processes=1)
+
+
+    @property
+    def context(self):
+        return self.sess.current_context
 
 
     def pointers(self) -> List[str]:
         """Return a list of the pointers available in the current context."""
-        c = self.sess.current_context
-        names_pointers = c.name_pointers_for_workspace(c.workspace_link, self.db)
+        names_pointers = self.context.name_pointers_for_workspace(
+                                self.context.workspace_link, self.db)
         return list(names_pointers.keys())
+
+
+    def locked_pointers(self) -> List[str]:
+        return [pointer
+                for pointer, address in self.context.name_pointers.items()
+                if address not in self.context.unlocked_locations]
+
 
 
     def unaskable_pointers(self) -> Collection[str]:
         """Return pointers that by themselves can't be asked as a subquestion."""
-        c = self.sess.current_context
-        ws: Workspace = self.db.dereference(c.workspace_link)
+        ws: Workspace = self.db.dereference(self.context.workspace_link)
 
         unaskable_addrs: List[Address] = [ws.question_link]
         if not self.db.dereference(ws.scratchpad_link):
             unaskable_addrs.append(ws.scratchpad_link)
         unaskable_addrs += [sq[0] for sq in ws.subquestions]  # sq[0]: question
 
-        return {c.pointer_names[a] for a in unaskable_addrs}
+        return {self.context.pointer_names[a] for a in unaskable_addrs}
 
 
     # TODO: Make the waiting time for the join adaptive.
@@ -200,9 +207,8 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def unlock(self, data: SearchStrategy[Any]):
-        lps = locked_pointers(self.sess.current_context)
         self.act(
-            Unlock(data.draw(st.sampled_from(lps))))
+            Unlock(data.draw(st.sampled_from(self.locked_pointers()))))
 
 
     # TODO assertion: We should only get that value error when re-asking an
@@ -214,8 +220,8 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
         up = self.unaskable_pointers()
-        question = data.draw(question_hypertext(self.pointers())
-                         .filter(lambda q: q not in up))  # Issue #15.
+        question = data.draw(question_hypertext(self.pointers()))
+                         #.filter(lambda q: q not in up))  # Issue #15.
         try:
             self.act(
                 AskSubquestion(question))
