@@ -28,13 +28,12 @@ def print_status(status):
 # - When one is taking too long, don't start anything new. Just keep checking
 #   it periodically.
 def main():
-    print(run_test(0))
     with multiprocessing.Pool(processes=4) as pool:
         n_trials    = 40
         status      = [" " for __ in range(n_trials)]
         results     = [pool.apply_async(run_test, [i]) for i in range(n_trials)]
 
-        while True:
+        while sum(1 for s in status if s != " ") < n_trials:
             for i, r in enumerate(results):
                 if r.ready() and status[i] == " ":
                     __, was_successful = r.get()
