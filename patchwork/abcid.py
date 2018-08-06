@@ -16,6 +16,7 @@ class Abcid(object):
         self.path   = "words_alpha.txt"
         self.words  = []
         self.random = random.Random(seed)
+        self.state  = 0
 
 
     def load_words(self):
@@ -24,4 +25,8 @@ class Abcid(object):
 
 
     def abcid(self):
-        return "-".join(self.random.choices(self.words, k=2))
+        # return "-".join(self.random.choices(self.words, k=2))
+        try:
+            return str(self.state)
+        finally:
+            self.state += 1

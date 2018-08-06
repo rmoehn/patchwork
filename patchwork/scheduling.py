@@ -1,4 +1,5 @@
 from collections import deque
+import copy
 from typing import Deque, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, \
     Union
 
@@ -197,7 +198,9 @@ class Scheduler(object):
         """Return a context that can advance ``promise``."""
         choice = next(c for c in self.pending_contexts
                       if c.can_advance_promise(self.db, promise))
-        self.pending_contexts.remove(choice)
+        #self.pending_contexts.remove(choice)
+        self.pending_contexts = deque(c for c in self.pending_contexts
+                                      if c.workspace_link != choice.workspace_link)
         self.active_contexts.add(choice)
         return choice
 

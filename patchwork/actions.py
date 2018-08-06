@@ -132,6 +132,9 @@ class Reply(UnpredictableAction):
     def __init__(self, reply_text: str) -> None:
         self.reply_text = reply_text
 
+    def __repr__(self):
+        return "Reply('{}')".format(self.reply_text)
+
     def execute(
             self,
             db: Datastore,

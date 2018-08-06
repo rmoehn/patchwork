@@ -1,3 +1,8 @@
+"""
+
+Doesn't support promises, because it hasn't yet been needed and they would
+make everything even more confusing.
+"""
 import collections
 
 import graphviz
@@ -6,7 +11,7 @@ import jinja2
 from patchwork.datastore import Datastore, Address
 from patchwork.hypertext import RawHypertext, Workspace
 
-Entry = collections.namedtuple("Entry", ["symbol", "location"])
+Entry = collections.namedtuple("Entry", ["symbol", "location", "color"])
 
 workspace_template = """<
 <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" BGCOLOR="#AACCFF">
@@ -22,21 +27,20 @@ workspace_template = """<
 
 def workspace_node(g: graphviz.Digraph, a: Address, w: Workspace):
     entries = []
-    entries.append(Entry("Q", w.question_link.location))
+    entries.append(Entry("Q", w.question_link.location, "#0055D4"))
     #entries.append(Entry("P", w.scratchpad_link.location))
 
     for (i, (sq_link, answer_p, final_ws_p)) in enumerate(w.subquestions):
-        entries.append(Entry("S{}".format(i), sq_link.location))
+        entries.append(Entry("S{}".format(i), sq_link.location, "#AA4400"))
 
-    entries.append(Entry("A", w.answer_promise.location))
-    entries.append(Entry("F", w.final_workspace_promise.location))
+    entries.append(Entry("A", w.answer_promise.location, "#447821"))
+    # entries.append(Entry("F", w.final_workspace_promise.location, "#000000"))
 
     template = jinja2.Template(workspace_template)
     label = template.render(workspace_loc=a.location, entries=entries)
     g.node(a.location, label=label, shape='plain')
     for e in entries:
-        color = "#0055D4" if e.symbol == 'Q' else "#000000"
-        g.edge("{}:{}".format(a.location, e.symbol), e.location, color=color)
+        g.edge("{}:{}".format(a.location, e.symbol), e.location, color=e.color)
 
 
 rawhypertext_template = """<
@@ -87,13 +91,10 @@ def make_graph(db: Datastore):
         elif isinstance(data, Workspace):
             workspace_node(g, a, data)
 
-
-
     return g
 
 
 
 def draw(db, path):
     g = make_graph(db)
-    print(g.source)
     g.render(path, view=True)
