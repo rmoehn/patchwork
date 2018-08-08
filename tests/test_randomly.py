@@ -7,26 +7,23 @@ Also defines :py:class:`TestRandomly`, which unit testing tools can detect.
 
 import logging
 import re
-from typing import Any, Collection, List, Optional
+import sys
+from typing import Any, List, Optional
 
 import hypothesis.strategies as st
-
-import sys
 from hypothesis.searchstrategy import SearchStrategy
 from hypothesis.stateful import RuleBasedStateMachine, precondition, rule
 
-from patchwork.actions import AskSubquestion, Reply, Scratch, Unlock, Action
+from patchwork.actions import Action, AskSubquestion, Reply, Scratch, Unlock
 from patchwork.context import Context
-from patchwork.datastore import Address, Datastore
-from patchwork.hypertext import Workspace
+from patchwork.datastore import Datastore
 from patchwork.scheduling import RootQuestionSession, Scheduler
-
 from tests import killable_thread
+
+logging.basicConfig(level=logging.INFO)
 
 
 # Strategies ###############################################
-
-# MÖPMÖP: Revisit this:
 
 # A strategy for generating hypertext without any pointers, ie. just text.
 #
@@ -54,9 +51,9 @@ def join(l: List[str]) -> str:
 def hypertext(pointers: List[str]) -> SearchStrategy[str]:
     """Return a strategy for generating nested hypertext.
 
-    The resulting strategy can generate any hypertext. Ie. a mix of
-    text, unexpanded pointers, and expanded pointers containing hypertext.
-    The resulting string won't have whitespace at either end in order to be
+    The resulting strategy can generate any hypertext. Ie. a mix of text,
+    unexpanded pointers, and expanded pointers containing hypertext. The
+    resulting string won't have whitespace at either end in order to be
     consistent with command-line Patchwork, which strips inputs before passing
     them to the :py:class:`Action` initializers.
 
@@ -68,7 +65,8 @@ def hypertext(pointers: List[str]) -> SearchStrategy[str]:
 
     Returns
     -------
-    A strategy that generates hypertext.
+    A strategy that generates hypertext. The generated hypertext will be empty
+    sometimes.
     """
     protected_pointers = st.sampled_from(pointers).map(lambda p: p + " ")
     # Protected from being garbled by following text: $1␣non-pointer text
@@ -81,29 +79,18 @@ def hypertext(pointers: List[str]) -> SearchStrategy[str]:
     ).map(lambda s: s.strip())
 
 
-def nonempty_hypertext(pointers: List[str]) -> SearchStrategy[str]:
-    """Return a strategy for generating non-empty hypertext.
+def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
+    """Return a strategy for generating hypertext that is suited for questions.
+
+    Some hypertexts are likely to create infinite loops when used as a
+    subquestion. See issue #15. This procedure returns the same strategy as
+    :py:func:`hypertext`, except that it filters out those unsuitable cases.
 
     See also
     --------
     :py:func:`hypertext`
     """
-    return hypertext(pointers).filter(lambda s: s)
-
-
-def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
-    """Return a strategy for generating hypertext that is suited for questions.
-
-    Some hypertexts are likely to create infinite loops when used as a
-    subquestion. See issues #11 and #15. This procedure returns the same
-    strategy as :py:func:`nonempty_hypertext`, except that it filters out those
-    unsuitable cases.
-
-    See also
-    --------
-    :py:func:`nonempty_hypertext`
-    """
-    return nonempty_hypertext(pointers).filter(lambda s: s[0] != "[")
+    return hypertext(pointers).filter(lambda s: not s.startswith("["))
 
 
 # Test case ################################################
@@ -111,8 +98,8 @@ def question_hypertext(pointers: List[str]) -> SearchStrategy[str]:
 class PatchworkStateMachine(RuleBasedStateMachine):
     """Bombard patchwork with random questions, replies etc.
 
-    This doesn't contain any assertions, yet, but at least it makes sure that no
-    action will cause an unexpected exception.
+    This test doesn't contain any assertions, yet, but at least it makes sure
+    that no action will cause an unexpected exception.
     """
     def __init__(self):
         super(PatchworkStateMachine, self).__init__()
@@ -121,15 +108,15 @@ class PatchworkStateMachine(RuleBasedStateMachine):
 
 
     @property
-    def context(self):
+    def context(self) -> Context:
         return self.sess.current_context
 
 
     def pointers(self) -> List[str]:
         """Return a list of the pointers available in the current context."""
-        names_pointers = self.context.name_pointers_for_workspace(
-                                self.context.workspace_link, self.db)
-        return list(names_pointers.keys())
+        return list(self.context.name_pointers_for_workspace(
+                        self.context.workspace_link, self.db)
+                    .keys())
 
 
     def locked_pointers(self) -> List[str]:
@@ -138,32 +125,19 @@ class PatchworkStateMachine(RuleBasedStateMachine):
                 if address not in self.context.unlocked_locations]
 
 
-
-    def unaskable_pointers(self) -> Collection[str]:
-        """Return pointers that by themselves can't be asked as a subquestion."""
-        ws: Workspace = self.db.dereference(self.context.workspace_link)
-
-        unaskable_addrs: List[Address] = [ws.question_link]
-        if not self.db.dereference(ws.scratchpad_link):
-            unaskable_addrs.append(ws.scratchpad_link)
-        unaskable_addrs += [sq[0] for sq in ws.subquestions]  # sq[0]: question
-
-        return {self.context.pointer_names[a] for a in unaskable_addrs}
-
-
     # TODO: Make the waiting time for the join adaptive.
     def act(self, action: Action):
         t = killable_thread.ThreadWithExc(target=lambda: self.sess.act(action),
                                           name="Killable Session.act",
                                           daemon=False)
         t.start()
-        waiting_time = 0.5
+        waiting_time = 0.1
         t.join(waiting_time)
 
         if t.is_alive():
-            logging.warning("Terminating the execution of action %s, because it"
-                            " might be caught in an infinite loop (execution"
-                            " time > %s s).", action, waiting_time)
+            logging.info("Terminating the execution of action %s, because it"
+                         " might be caught in an infinite loop (execution time"
+                         " > %s s).", action, waiting_time)
             try:
                 t.terminate()
             except killable_thread.UnkillableThread:
@@ -219,9 +193,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
-        up = self.unaskable_pointers()
         question = data.draw(question_hypertext(self.pointers()))
-                         #.filter(lambda q: q not in up))  # Issue #15.
         try:
             self.act(
                 AskSubquestion(question))
@@ -242,32 +214,3 @@ class PatchworkStateMachine(RuleBasedStateMachine):
 # Runner ###################################################
 
 TestRandomly = PatchworkStateMachine.TestCase
-# def run_state_machine():
-#     result = unittest.TestResult()
-#     t1 = time.time()
-#     PatchworkStateMachine.TestCase().run(result)
-#     t2 = time.time()
-#     print(result)
-#     return result, t2 - t1
-#
-#
-# class TestRandomly(unittest.TestCase):
-#     def testRunStateMachine(self):
-#         with multiprocessing.Pool() as pool:
-#             n_runs = max(4, os.cpu_count())  # Feel free to adapt this for your purposes.
-#             results = [pool.apply_async(run_state_machine) for i in range(n_runs)]
-#
-#             # What do I want?
-#             # - I think the probability is high that at least one of four
-#             #   runs finishes.
-#             # - So we have the running time of at least one process as a
-#             #   yardstick for the other processes.
-#             # - If nothing has happened for four times the normal running
-#             #   time, terminate the process pool.
-#
-#             # - Hmm, but I want the tests not to take forever, right? The
-#             #   problem is that Hypothesis tests' run times vary, because
-#             #   sometimes they hit a failure and shrink.
-#             # - That's why it would be better to put a time limit on act().
-#             #   I guess I should just try how much of a performance penalty
-#             #   running only act() asynchronously incurs.
