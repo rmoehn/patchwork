@@ -126,12 +126,14 @@ class PatchworkStateMachine(RuleBasedStateMachine):
 
 
     # TODO: Make the waiting time for the join adaptive.
+    # TODO: If we call t.terminate() after the thread has finished (because
+    # it finished just after the timeout), we get an error. Avoid or catch that.
     def act(self, action: Action):
         t = killable_thread.ThreadWithExc(target=lambda: self.sess.act(action),
                                           name="Killable Session.act",
                                           daemon=False)
         t.start()
-        waiting_time = 0.1
+        waiting_time = 0.5
         t.join(waiting_time)
 
         if t.is_alive():
@@ -146,7 +148,6 @@ class PatchworkStateMachine(RuleBasedStateMachine):
                          .format(action))
 
 
-    # TODO: We should have a Session.__exit__ somewhere.
     # TODO generation: Make sure that sometimes a question that was asked
     # before is asked again, also in ask(), so that the memoizer is exercised.
     # TODO assertion: The root answer is available immediately iff it was in
@@ -161,19 +162,17 @@ class PatchworkStateMachine(RuleBasedStateMachine):
                         Scheduler(self.db),
                         question=data.draw(question_hypertext([])))
         if self.sess.root_answer:
+            self.sess.__exit__()
             self.sess = None
 
 
-    # TODO: After issue #12 is resolved, remove the workaround. It is too
-    # restrictive.
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def reply(self, data: SearchStrategy[Any]):
-        reply = data.draw(hypertext(self.pointers()).filter(
-                    lambda r: not re.match(r"\$q\d+\Z", r)))  # Issue #12, comment #2.
         self.act(
-            Reply(reply))
+            Reply(data.draw(hypertext(self.pointers()))))
         if self.sess.root_answer:
+            self.sess.__exit__()
             self.sess = None
 
 
@@ -185,11 +184,11 @@ class PatchworkStateMachine(RuleBasedStateMachine):
             Unlock(data.draw(st.sampled_from(self.locked_pointers()))))
 
 
-    # TODO assertion: We should only get that value error when re-asking an
-    # ancestor's question.
-    # TODO assertion: Asking an unaskable pointer causes an exception.
-    # TODO generation: Address
-    # https://github.com/oughtinc/patchwork/issues/15#issuecomment-404728700.
+    # TODO: Move the try-except to self.act(), because the infinite loop
+    # error can also occur with other actions. Cf.
+    # https://github.com/oughtinc/patchwork/issues/12#issuecomment-404002144.
+    # TODO assertion: Infinite loop error is only thrown when it should be
+    # thrown.
     @precondition(lambda self: self.sess)
     @rule(data=st.data())
     def ask(self, data: SearchStrategy[Any]):
@@ -198,8 +197,6 @@ class PatchworkStateMachine(RuleBasedStateMachine):
             self.act(
                 AskSubquestion(question))
         except ValueError as e:
-            # If it re-asked an ancestor's question...
-            # (For now we'll prevent this error only in this primitive way.)
             if "Action resulted in an infinite loop" not in str(e):
                 raise
 
