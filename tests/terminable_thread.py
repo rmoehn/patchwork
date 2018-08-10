@@ -1,21 +1,31 @@
-import ctypes
-import threading
+"""Defines a thread that can be terminated from the outside.
 
+Main class: :py:class:`TerminableThread`
+
+Based on:
+https://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python
+Which in turn is based on:
+http://tomerfiliba.com/recipes/Thread2/
+Mixed in:
+https://stackoverflow.com/questions/2829329/catch-a-threads-exception-in-the-caller-thread-in-python
+"""
+import ctypes
 import sys
-import traceback
+import threading
 
 
 class ThreadExit(Exception):
+    """Injected into the thread in order to make it terminate."""
     pass
 
-class UnkillableThread(Exception):
+class TerminationError(Exception):
+    """Raised when a thread keeps running even after injecting :py:exc:`ThreadExit`.
+    """
     pass
 
-# https://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python
-# http://tomerfiliba.com/recipes/Thread2/
-# https://svn.python.org/projects/stackless/Python-2.4.3/dev/Python/pystate.c
+
 def _async_raise(tid: int, exc_type: type):
-    """Raise an exception in the thread with ID ``tid``"""
+    """Raise an exception in the thread with ID ``tid``."""
     res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid),
                                                      ctypes.py_object(exc_type))
     if res == 0:
@@ -23,21 +33,26 @@ def _async_raise(tid: int, exc_type: type):
     elif res != 1:
         # "if it returns a number greater than one, you're in trouble,
         # and you should call it again with exc=NULL to revert the effect"
+        # (https://svn.python.org/projects/stackless/Python-2.4.3/dev/Python/pystate.c)
         ctypes.pythonapi.PyThreadState_SetAsyncExc(tid, None)
         raise SystemError("PyThreadState_SetAsyncExc failed")
 
-# https://stackoverflow.com/questions/2829329/catch-a-threads-exception-in-the-caller-thread-in-python
 
-class ThreadWithExc(threading.Thread):
-    '''A thread class that supports raising exception in the thread from
-       another thread.
-    '''
+class TerminableThread(threading.Thread):
+    """Like :py:class:`threading.Thread`, but can be killed from the outside.
+
+    The semantics are the same as those of :py:class:`threading.Thread`, except
+    that the method :py:meth:`TerminableThread.terminate` is added and if the
+    child thread raised an exception, :py:meth:`TerminableThread.join` will
+    re-raise it.
+    """
 
     def __init__(self, *args, **kwargs):
-        super(ThreadWithExc, self).__init__(*args, **kwargs)
+        super(TerminableThread, self).__init__(*args, **kwargs)
         self.exc_info = None
         self.result = None
         self.terminated = False
+
 
     def run(self):
         try:
@@ -50,17 +65,19 @@ class ThreadWithExc(threading.Thread):
         finally:
             # Avoid a refcycle if the thread is running a function with
             # an argument that has a member that points to the thread.
-            # (Copied from threading source.)
+            # Credits: threading source
             del self._target, self._args, self._kwargs
 
-    # The result should include that, but actually an exception.
+
     def join(self, timeout=None):
-        super(ThreadWithExc, self).join(timeout)
+        super(TerminableThread, self).join(timeout)
         if self.exc_info:
             raise self.exc_info[1]
         return self.result
 
-    def raise_exception(self, exc_type: type):
+
+    # Why do we need an extra procedure?
+    def _raise_exception(self, exc_type: type):
         """Raises the given exception type in the context of this thread.
 
         If the thread is busy in a system call (time.sleep(),
@@ -69,7 +86,7 @@ class ThreadWithExc(threading.Thread):
         If you are sure that your exception should terminate the thread,
         one way to ensure that it works is:
 
-            t = ThreadWithExc( ... )
+            t = TerminableThread( ... )
             ...
             t.raiseExc( SomeException )
             while t.isAlive():
@@ -85,10 +102,11 @@ class ThreadWithExc(threading.Thread):
         """
         _async_raise(self.ident, exc_type)
 
+
     def terminate(self, timeout=0.01):
-        self.raise_exception(ThreadExit)
+        self._raise_exception(ThreadExit)
         if timeout is not None:
             self.join(timeout)
             if self.is_alive():
-                raise UnkillableThread("Attempted to terminate thread '{}', but"
+                raise TerminationError("Attempted to terminate thread '{}', but"
                                        " it keeps running.".format(self.getName()))

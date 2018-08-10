@@ -18,7 +18,7 @@ from patchwork.actions import Action, AskSubquestion, Reply, Scratch, Unlock
 from patchwork.context import Context
 from patchwork.datastore import Datastore
 from patchwork.scheduling import RootQuestionSession, Scheduler
-from tests import killable_thread
+from tests import terminable_thread
 
 logging.basicConfig(level=logging.INFO)
 
@@ -129,9 +129,9 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     # TODO: If we call t.terminate() after the thread has finished (because
     # it finished just after the timeout), we get an error. Avoid or catch that.
     def act(self, action: Action):
-        t = killable_thread.ThreadWithExc(target=lambda: self.sess.act(action),
-                                          name="Killable Session.act",
-                                          daemon=False)
+        t = terminable_thread.TerminableThread(target=lambda: self.sess.act(action),
+                                               name="Killable Session.act",
+                                               daemon=False)
         t.start()
         waiting_time = 0.5
         t.join(waiting_time)
@@ -142,7 +142,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
                          " > %s s).", action, waiting_time)
             try:
                 t.terminate()
-            except killable_thread.UnkillableThread:
+            except terminable_thread.TerminationError:
                 sys.exit("Couldn't kill the thread that is executing action {}."
                          " Aborting in order to avoid system overload."
                          .format(action))
