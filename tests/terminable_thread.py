@@ -9,6 +9,7 @@ http://tomerfiliba.com/recipes/Thread2/
 Mixed in:
 https://stackoverflow.com/questions/2829329/catch-a-threads-exception-in-the-caller-thread-in-python
 """
+
 import ctypes
 import sys
 import threading
@@ -22,20 +23,6 @@ class TerminationError(Exception):
     """Raised when a thread keeps running even after injecting :py:exc:`ThreadExit`.
     """
     pass
-
-
-def _async_raise(tid: int, exc_type: type):
-    """Raise an exception in the thread with ID ``tid``."""
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid),
-                                                     ctypes.py_object(exc_type))
-    if res == 0:
-        raise ValueError("Couldn't find thread with ID {}.".format(tid))
-    elif res != 1:
-        # "if it returns a number greater than one, you're in trouble,
-        # and you should call it again with exc=NULL to revert the effect"
-        # (https://svn.python.org/projects/stackless/Python-2.4.3/dev/Python/pystate.c)
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(tid, None)
-        raise SystemError("PyThreadState_SetAsyncExc failed")
 
 
 class TerminableThread(threading.Thread):
@@ -76,31 +63,28 @@ class TerminableThread(threading.Thread):
         return self.result
 
 
-    # Why do we need an extra procedure?
     def _raise_exception(self, exc_type: type):
-        """Raises the given exception type in the context of this thread.
+        """Raise exception with the given type in the thread represented by self.
 
-        If the thread is busy in a system call (time.sleep(),
-        socket.accept(), ...), the exception is simply ignored.
-
-        If you are sure that your exception should terminate the thread,
-        one way to ensure that it works is:
-
-            t = TerminableThread( ... )
-            ...
-            t.raiseExc( SomeException )
-            while t.isAlive():
-                time.sleep( 0.1 )
-                t.raiseExc( SomeException )
-
-        If the exception is to be caught by the thread, you need a way to
-        check that your thread has caught it.
-
-        CAREFUL : this function is executed in the context of the
-        caller thread, to raise an excpetion in the context of the
-        thread represented by this instance.
+        If the thread is waiting for a system call (eg. ``time.sleep()``,
+        ``socket.accept()``) to return, it will ignore the exception.
         """
-        _async_raise(self.ident, exc_type)
+        lident = ctypes.c_long(self.ident)
+        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                    lident,
+                    ctypes.py_object(exc_type))
+
+        if res == 0:
+            raise ValueError("PyThreadState_SetAsyncExc failed to find {}."
+                             .format(self))
+
+        if res != 1:
+            # "if it returns a number greater than one, you're in trouble,
+            # and you should call it again with exc=NULL to revert the effect"
+            # (https://svn.python.org/projects/stackless/Python-2.4.3/dev/Python/pystate.c)
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(lident, None)
+            raise SystemError("PyThreadState_SetAsyncExc failed for {}."
+                              .format(self))
 
 
     def terminate(self, timeout=0.01):
@@ -108,5 +92,5 @@ class TerminableThread(threading.Thread):
         if timeout is not None:
             self.join(timeout)
             if self.is_alive():
-                raise TerminationError("Attempted to terminate thread '{}', but"
-                                       " it keeps running.".format(self.getName()))
+                raise TerminationError("Attempted to terminate {}, but it keeps"
+                                       " running.".format(self))
