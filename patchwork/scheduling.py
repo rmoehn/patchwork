@@ -6,6 +6,7 @@ from .actions import Action
 from .context import Context
 from .datastore import Address, Datastore, TransactionAccumulator
 from .hypertext import Workspace
+from . import reflection as ref
 
 from .text_manipulation import insert_raw_hypertext, make_link_texts
 
@@ -136,6 +137,8 @@ class Scheduler(object):
         self.memoizer = Memoizer()
         self.automators: List[Automator] = [self.memoizer]
 
+        self.history = None
+
     def ask_root_question(self, contents: str) -> Tuple[Context, Address]:
         # How root!
         question_link = insert_raw_hypertext(contents, self.db, {})
@@ -160,7 +163,46 @@ class Scheduler(object):
         self.memoizer.remember(starting_context, action)
         
         try:
-            successor, other_contexts = action.execute(transaction, starting_context) 
+            successor, other_contexts = action.execute(transaction, starting_context)
+
+            # When we take an action, we have to insert the source of the
+            # starting context and the result of the starting context's
+            # starting context.
+            #
+            # There is always a result pointer, except for the context in
+            # which the user entered reflect.
+            #
+            # And the reflect command needs to be able to find a pointer to
+            # the latest source.
+            self.db.insert(
+
+            )
+
+            # self.history[starting_context] = {'action': action,
+            #                                   'successor': successor,
+            #                                   'other_contexts': other_contexts}
+            # Actions only have access to the datastore, so this needs to go
+            # there.
+            #
+            # Also we have to store not contexts, but the arguments to
+            # contexts, otherwise we get anachronistic numbering. → Have to
+            # refactor Context first.
+            #
+            # But if we store it in the datastore like this, we don't get the
+            # required representation when unlocking. So we either have to do
+            # more work when storing or when unlocking.
+            #
+            # Also add something to contexts and workspaces, so that they can
+            # store the reflection stuff. Formatting is not required at
+            # first, because we can pretty-print data structures.
+            #
+            # But numbering will take some work.
+            #
+            # One step after the other.
+            #
+            # Unlock would also have to know whether or not a pointer is
+            # reflected.
+
             un_automatable_contexts: List[Context] = []
             possibly_automatable_contexts = deque(self.pending_contexts)
             possibly_automatable_contexts.extendleft(other_contexts)
