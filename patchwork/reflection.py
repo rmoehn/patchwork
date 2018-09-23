@@ -4,45 +4,7 @@ import attr
 
 from .actions import Action
 from .context import DryContext
-from .hypertext import Hypertext
 
-
-@attr.s(frozen=True)
-class AS(object):
-    act = attr.ib(Action)
-    succ = attr.ib(type=DryContext)
-
-
-@attr.s(frozen=True)
-class SASO(object):
-    start = attr.ib(type=DryContext)
-    act = attr.ib(type=Action)
-    succ = attr.ib(type=DryContext)
-    other = attr.ib(type=Tuple[DryContext])
-
-
-@attr.s(frozen=True)
-class S(object):
-    # Would be better if we had a variant type.
-    source = attr.ib(type=Union[AS, SASO])
-
-
-@attr.s(frozen=True)
-class S(object):
-    source = attr.ib(type=Union[AS, SASO])
-    result = attr.ib(type=SASO)
-
-
-# Hm, do we want to store actual objects at all? Or addresses?
-# How do we traverse? With every context we have to store the references.
-# Or how? Hm.
-
-# My graphs on paper only have context and action nodes. If we store
-# bidirectional links between contexts and actions, we can derive the rest.
-
-
-#RAction = Union["ASSO", "ASO", "AS"]
-#RContext =
 
 @attr.s(frozen=True)
 class C(object):
