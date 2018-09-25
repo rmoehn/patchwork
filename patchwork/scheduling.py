@@ -2,6 +2,10 @@ from collections import deque
 from typing import Deque, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, \
     Union
 
+# COMMIT: I don't have to make implementations decisions. And it comes with
+# visualization.
+import networkx as nx
+
 from .actions import Action
 from .context import Context
 from .datastore import Address, Datastore, TransactionAccumulator
@@ -137,7 +141,7 @@ class Scheduler(object):
         self.memoizer = Memoizer()
         self.automators: List[Automator] = [self.memoizer]
 
-        self.history = None
+        self.history = nx.DiGraph()
 
     def ask_root_question(self, contents: str) -> Tuple[Context, Address]:
         # How root!
@@ -165,6 +169,27 @@ class Scheduler(object):
         try:
             successor, other_contexts = action.execute(transaction, starting_context)
 
+            self.history.add_nodes_from(
+                [ref.dry_cut(c) for c in [starting_context] + other_contexts])
+            self.history.add_node(action)
+
+            if successor:
+                self.history.add_node(ref.dry_cut(successor))
+
+            for c in other_contexts:
+                self.db.insert(ref.CS)
+
+            if successor:
+                succ_addr = self.db.insert(successor)
+                self.db.insert(ref.ASSO(start=start_addr,
+                                        action=action_addr,
+                                        succ=succ_addr,
+                                        others=other_addrs))
+            else:
+                self.db.insert(ref.ASO(start=start_addr,
+                                       action=action_addr,
+                                       others=other_addrs))
+
             # When we take an action, we have to insert the source of the
             # starting context and the result of the starting context's
             # starting context.
@@ -174,9 +199,6 @@ class Scheduler(object):
             #
             # And the reflect command needs to be able to find a pointer to
             # the latest source.
-            self.db.insert(
-
-            )
 
             # self.history[starting_context] = {'action': action,
             #                                   'successor': successor,

@@ -1,6 +1,6 @@
-from collections import defaultdict, deque
 from textwrap import indent
-from typing import DefaultDict, Dict, Deque, Generator, List, Optional, Set, Tuple
+from typing import DefaultDict, Dict, Deque, Generator, List, Optional, Set, \
+    Tuple, FrozenSet
 
 import attr
 
@@ -13,7 +13,7 @@ from .text_manipulation import make_link_texts
 class DryContext(object):
     """Stores the arguments for reconstituting a Context in the future."""
     workspace_link = attr.ib(type=Address)
-    unlocked_locations = attr.ib(type=Optional[Set[Address]])
+    unlocked_locations = attr.ib(type=Optional[FrozenSet[Address]])
     parent = attr.ib(type=Optional["Context"])
 
 
@@ -60,12 +60,14 @@ class Context(object):
         self.parent = parent
 
     def to_dry(self) -> DryContext:
-        return DryContext(self.workspace_link, self.unlocked_locations, self.parent)
+        return DryContext(self.workspace_link,
+                          frozenset(self.unlocked_locations),
+                          self.parent)
 
     @classmethod
     def from_dry(cls, dry_context: DryContext, db: Datastore) -> "Context":
         return cls(dry_context.workspace_link, db,
-                   dry_context.unlocked_locations, dry_context.parent)
+                   set(dry_context.unlocked_locations), dry_context.parent)
 
     def _name_pointers(
             self,
