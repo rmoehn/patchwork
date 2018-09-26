@@ -38,7 +38,7 @@ class Scratch(PredictableAction):
             self,
             db: Datastore,
             context: Context,
-            ) -> Tuple[Optional[Context], List[Context]]:
+            ) -> List[Context]:
 
         new_scratchpad_link = insert_raw_hypertext(
                 self.scratch_text,
@@ -64,14 +64,11 @@ class Scratch(PredictableAction):
         new_unlocked_locations.add(successor_workspace_link)
         new_unlocked_locations.add(new_scratchpad_link)
 
-        return (
-                Context(
+        return [Context(
                     successor_workspace_link,
                     db,
                     unlocked_locations=new_unlocked_locations,
-                    parent=context),
-                []
-                )
+                    parent=context)]
 
 
 class AskSubquestion(PredictableAction):
@@ -83,7 +80,7 @@ class AskSubquestion(PredictableAction):
             self,
             db: Datastore,
             context: Context,
-            ) -> Tuple[Optional[Context], List[Context]]:
+            ) -> List[Context]:
 
         subquestion_link = insert_raw_hypertext(
                 self.question_text,
@@ -124,13 +121,12 @@ class AskSubquestion(PredictableAction):
         new_unlocked_locations.add(subquestion_link)
         new_unlocked_locations.add(successor_workspace_link)
 
-        return (
-                Context(
+        return [Context(
                     successor_workspace_link,
                     db,
                     unlocked_locations=new_unlocked_locations,
                     parent=context),
-                [Context(sub_workspace_link, db, parent=context)])
+                Context(sub_workspace_link, db, parent=context)]
 
 
 class Reply(UnpredictableAction):
@@ -142,7 +138,7 @@ class Reply(UnpredictableAction):
             self,
             db: Datastore,
             context: Context,
-            ) -> Tuple[Optional[Context], List[Context]]:
+            ) -> List[Context]:
 
         current_workspace = db.dereference(context.workspace_link)
 
@@ -169,7 +165,7 @@ class Reply(UnpredictableAction):
         all_successors = [Context.from_dry(dry_context, db)
                 for dry_context in answer_successors + workspace_successors]
 
-        return (None, all_successors)
+        return all_successors
 
 
 class Unlock(Action):
@@ -181,7 +177,7 @@ class Unlock(Action):
             self,
             db: Datastore,
             context: Context,
-            ) -> Tuple[Optional[Context], List[Context]]:
+            ) -> List[Context]:
 
         try:
             pointer_address = context.name_pointers_for_workspace(
@@ -203,8 +199,8 @@ class Unlock(Action):
                                            new_unlocked_locations, context)
 
         if db.is_fulfilled(pointer_address):
-            return (None, [Context.from_dry(dry_successor_context, db)])
+            return [Context.from_dry(dry_successor_context, db)]
 
         db.register_promisee(pointer_address, dry_successor_context)
-        return (None, [])
+        return []
 

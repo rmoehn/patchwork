@@ -105,6 +105,7 @@ class PatchworkStateMachine(RuleBasedStateMachine):
         super(PatchworkStateMachine, self).__init__()
         self.db: Optional[Datastore] = None
         self.sess: Optional[RootQuestionSession] = None
+        self.seen_contexts = set()
 
 
     @property
@@ -147,6 +148,10 @@ class PatchworkStateMachine(RuleBasedStateMachine):
                          " Aborting in order to avoid system overload."
                          .format(action))
 
+        if str(self.context) in self.seen_contexts:
+            raise AssertionError("Memoizer didn't work.")
+        self.seen_contexts.add(str(self.context))
+
 
     # TODO generation: Make sure that sometimes a question that was asked
     # before is asked again, also in ask(), so that the memoizer is exercised.
@@ -156,8 +161,9 @@ class PatchworkStateMachine(RuleBasedStateMachine):
     @rule(data=st.data(),
           is_reset_db=st.booleans())
     def start_session(self, data: SearchStrategy[Any], is_reset_db: bool):
-        if self.db is None or is_reset_db:
+        if True or self.db is None or is_reset_db:
             self.db = Datastore()
+            self.seen_contexts = set()
         self.sess = RootQuestionSession(
                         Scheduler(self.db),
                         question=data.draw(question_hypertext([])))

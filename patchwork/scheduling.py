@@ -147,12 +147,10 @@ class Scheduler(object):
         result = Context(new_workspace_link, self.db)
         answer_link = self.db.dereference(result.workspace_link).answer_promise
         self.active_contexts.add(result)
-        while self.memoizer.can_handle(result):
-            result = self.resolve_action(result, self.memoizer.handle(result))
 
         return result, answer_link
 
-    def resolve_action(self, starting_context: Context, action: Action) -> Optional[Context]:
+    def resolve_action(self, starting_context: Context, action: Action):
         # NOTE: There's a lot of wasted work in here for the sake of rolling back cycle-driven mistakes.
         # This stuff could all be removed if we had budgets.
         assert starting_context in self.active_contexts
@@ -160,7 +158,7 @@ class Scheduler(object):
         self.memoizer.remember(starting_context, action)
         
         try:
-            successor, other_contexts = action.execute(transaction, starting_context) 
+            other_contexts = action.execute(transaction, starting_context)
             un_automatable_contexts: List[Context] = []
             possibly_automatable_contexts = deque(self.pending_contexts)
             possibly_automatable_contexts.extendleft(other_contexts)
@@ -173,9 +171,7 @@ class Scheduler(object):
                         automatic_action = automator.handle(context)
                         break
                 if automatic_action is not None:
-                    new_successor, new_contexts = automatic_action.execute(transaction, context)
-                    if new_successor is not None: # in the automated setting, successors are not special.
-                        new_contexts.append(new_successor)
+                    new_contexts = automatic_action.execute(transaction, context)
                     for context in new_contexts:
                         if context.is_own_ancestor(transaction): # So much waste
                             raise ValueError("Action resulted in an infinite loop")
@@ -186,9 +182,7 @@ class Scheduler(object):
             transaction.commit()
             self.pending_contexts = deque(un_automatable_contexts)
             self.active_contexts.remove(starting_context)
-            if successor is not None:
-                self.active_contexts.add(successor)
-            return successor
+            return
         except:
             self.memoizer.forget(starting_context)
             raise
@@ -295,15 +289,13 @@ class RootQuestionSession(Session):
         return self.root_answer
 
     def act(self, action: Action) -> Union[Context, str]:
-        print(action.arg)
-        resulting_context = self.sched.resolve_action(self.current_context,
-                                                      action)
+        #print(action.arg)
+        self.sched.resolve_action(self.current_context, action)
 
         promise_to_advance = self.choose_promise(self.root_answer_promise)
         if promise_to_advance is None:  # Ie. everything was answered.
             return self.format_root_answer()
 
-        self.current_context = resulting_context \
-                               or self.sched.choose_context(promise_to_advance)
+        self.current_context = self.sched.choose_context(promise_to_advance)
 
         return self.current_context
