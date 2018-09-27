@@ -1,11 +1,5 @@
 import unittest
 
-import matplotlib.pyplot as plt
-import networkx as nx
-from networkx.drawing import nx_agraph
-from networkx.drawing.nx_agraph import graphviz_layout
-import pygraphviz
-
 from patchwork.actions import AskSubquestion, Reply, Unlock
 from patchwork.datastore import Datastore
 from patchwork.scheduling import RootQuestionSession, Scheduler
@@ -23,7 +17,7 @@ class TestBasic(unittest.TestCase):
         Cf. https://ought.org/projects/factored-cognition/taxonomy#recursion
         """
         db = Datastore()
-        sched: Scheduler = Scheduler(db)
+        sched = Scheduler(db)
 
         with RootQuestionSession(sched, "What is 351 * 5019?") as sess:
             self.assertRegex(str(sess.current_context),
@@ -56,16 +50,6 @@ class TestBasic(unittest.TestCase):
             result = sess.act(Reply("1761669"))
             self.assertIsNotNone(sess.root_answer)
             self.assertIn("1761669", result)
-
-
-            nx_agraph.write_dot(sched.history, "/tmp/bla")
-            nx.draw(sched.history)
-            edge_labels=dict([((u,v,),d['label']) for u,v,d in sched.history.edges(
-                    data=True)])
-            nx.draw_networkx_edge_labels(sched.history,
-                                         graphviz_layout(sched.history),
-                                         edge_labels=edge_labels)
-            plt.show()
 
 
     # The following tests are incomplete in that they only make sure that no

@@ -168,11 +168,9 @@ class Scheduler(object):
         
         try:
             successor, other_contexts = action.execute(transaction, starting_context)
-            print(other_contexts)
 
             dry_start = ref.dry_cut(starting_context)
-            dry_others = list(map(ref.dry_cut, other_contexts))
-            print(list(dry_others))
+            dry_others = [ref.dry_cut(c) for c in other_contexts]
 
             h = self.history
             h.add_node(dry_start)
@@ -182,13 +180,8 @@ class Scheduler(object):
             h.add_edges_from([(action, dry_start, {'label': 'start'}),
                               (dry_start, action, {'label': 'result'})])
 
-            print("again", list(dry_others))
-            others1 = [(action, o, {'label': 'other'}) for o in dry_others]
-            print(others1)
-            h.add_edges_from(others1)
-            others2 = [(o, action, {'label': 'source'}) for o in dry_others]
-            print(others2)
-            h.add_edges_from(others2)
+            h.add_edges_from([(action, o, {'label': 'other'}) for o in dry_others])
+            h.add_edges_from([(o, action, {'label': 'source'}) for o in dry_others])
 
             if successor:
                 dry_succ = ref.dry_cut(successor)
@@ -197,10 +190,6 @@ class Scheduler(object):
                                   (dry_succ, action, {'label': 'source'})])
 
 
-            # When we take an action, we have to insert the source of the
-            # starting context and the result of the starting context's
-            # starting context.
-            #
             # There is always a result pointer, except for the context in
             # which the user entered reflect.
             #
