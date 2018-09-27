@@ -168,27 +168,34 @@ class Scheduler(object):
         
         try:
             successor, other_contexts = action.execute(transaction, starting_context)
+            print(other_contexts)
 
-            self.history.add_nodes_from(
-                [ref.dry_cut(c) for c in [starting_context] + other_contexts])
-            self.history.add_node(action)
+            dry_start = ref.dry_cut(starting_context)
+            dry_others = list(map(ref.dry_cut, other_contexts))
+            print(list(dry_others))
+
+            h = self.history
+            h.add_node(dry_start)
+            h.add_nodes_from(dry_others)
+            h.add_node(action)
+
+            h.add_edges_from([(action, dry_start, {'label': 'start'}),
+                              (dry_start, action, {'label': 'result'})])
+
+            print("again", list(dry_others))
+            others1 = [(action, o, {'label': 'other'}) for o in dry_others]
+            print(others1)
+            h.add_edges_from(others1)
+            others2 = [(o, action, {'label': 'source'}) for o in dry_others]
+            print(others2)
+            h.add_edges_from(others2)
 
             if successor:
-                self.history.add_node(ref.dry_cut(successor))
+                dry_succ = ref.dry_cut(successor)
+                h.add_node(dry_succ)
+                h.add_edges_from([(action, dry_succ, {'label': 'succ'}),
+                                  (dry_succ, action, {'label': 'source'})])
 
-            for c in other_contexts:
-                self.db.insert(ref.CS)
-
-            if successor:
-                succ_addr = self.db.insert(successor)
-                self.db.insert(ref.ASSO(start=start_addr,
-                                        action=action_addr,
-                                        succ=succ_addr,
-                                        others=other_addrs))
-            else:
-                self.db.insert(ref.ASO(start=start_addr,
-                                       action=action_addr,
-                                       others=other_addrs))
 
             # When we take an action, we have to insert the source of the
             # starting context and the result of the starting context's
